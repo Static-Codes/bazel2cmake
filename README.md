@@ -24,7 +24,7 @@ area of open experimentation and research.
 From the root directory of a Bazel project (where your `BUILD` and
 `WORKSPACE` files live) run the following command.
 
-    $ path/to/bazel_to_cmake.py CMakeLists.txt
+    $ path/to/bazel2cmake.py CMakeLists.txt
 
 You can check the generated `CMakeLists.txt` file into your repository
 if you wish.  If you take this approach you will probably want a test
