@@ -52,7 +52,7 @@ def print_help():
     )
 
     print(
-        "[ -r | --recursive ]\n\n"
+        "[ -r | --no-recursion ]\n\n"
         "By default bazel2cmake enables recursive directory walking.\n"
         "By passing this flag, recursion will be enabled.\n"
         "\n-------------------------------------------------------------------------------\n"
