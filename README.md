@@ -6,8 +6,6 @@ This project converts Bazel `BUILD` and `WORKSPACE` files to
 truth, and this tool generates an idiomatic CMakeLists.txt so users
 can do a CMake-based build.
 
-This is not an official Google product.
-
 ## Usage
 
 From the root directory of a Bazel project (where your `BUILD` and
