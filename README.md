@@ -7,11 +7,13 @@ truth, and this tool generates an idiomatic CMakeLists.txt so users
 can do a CMake-based build.
 
 ## Usage
+### Windows
+    python path/to/bazel2cmake.py -d path/to/bazel/project
+    python path/to/bazel2cmake.py --help
 
-From the root directory of a Bazel project (where your `BUILD` and
-`WORKSPACE` files live) run the following command.
-
-    $ path/to/bazel2cmake.py -d path/to/bazel/project
+### Linux / macOS
+    python3 path/to/bazel2cmake.py -d path/to/bazel/project
+    python3 path/to/bazel2cmake.py --help
 
 
 ## Currently supported Bazel Rules
