@@ -92,3 +92,17 @@ To translate idiomatically, we translate at a high level.  For
 example `cc_library()` translates directly to `add_library()` in
 CMake.  But we try to capture subtleties; for example a header-only
 library needs to have the "INTERFACE" attribute in CMake.
+
+
+## Currently supported Bazel Rules
+| Bazel Rule / Attribute | CMake Command | Notes |
+| :--- | :--- | :--- |
+| `cc_library(srcs = [...])` | `add_library(...)` | Project library with source files |
+| `cc_library(srcs = [])` | `add_library(... INTERFACE)` | Header-only library (interface) |
+| `cc_binary` | `add_executable(...)` | Executable target |
+| `cc_test` | `add_executable(...)` + `add_test(...)` | Test executable registered with CC Test |
+| `deps` | `target_link_libraries(...)` | Dependency linking |
+| `workspace(name = "...")` | `project(...)` | Project definition |
+| `genrule` | `add_custom_command(...)` | Custom build steps |
+| `data` | `add_custom_command(... POST_BUILD)` | Copying runtime data dependencies |
+| `hdrs` | Part of `add_library` | Headers included in target sources |

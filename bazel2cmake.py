@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# Copyright 2026 Static Codes 
 # Copyright 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,258 +14,207 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A script to convert Bazel build systems to CMakeLists.txt.
-
-See README.md for more information.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
-import textwrap
+sys.dont_write_bytecode = True
 
-def StripColons(deps):
-  return map(lambda x: x[1:], deps)
 
-def IsSourceFile(name):
-  return name.endswith(".c") or name.endswith(".cc")
+import os
+import getopt
+from lib.generator import Generator
+from lib.parser import Parser
+from lib.resolver import Resolver
 
-class BuildFileFunctions(object):
-  def __init__(self, converter):
-    self.converter = converter
-
-  def _add_deps(self, kwargs, keyword=""):
-    if "deps" not in kwargs:
-      return
-    self.converter.toplevel += "target_link_libraries(%s%s\n  %s)\n" % (
-        kwargs["name"],
-        keyword,
-        "\n  ".join(StripColons(kwargs["deps"]))
+def print_help():
+    print(
+        "\n[ -h | --help ]\n\n"
+        "Displays this message.\n"
+        "\n-------------------------------------------------------------------------------\n"
     )
 
-  def load(self, *args):
-    pass
+    print(
+        "[ -d | --directory=<dir> ]\n\n"
+        "By default, bazel2cmake uses the current working directory for execution.\n"
+        "By passing this flag the working directory will be changed to reflect the provided directory.\n"
+        "\n-------------------------------------------------------------------------------\n"
+    )
 
-  def cc_library(self, **kwargs):
-    if kwargs["name"] == "amalgamation" or kwargs["name"] == "upbc_generator":
-      return
-    files = kwargs.get("srcs", []) + kwargs.get("hdrs", [])
+    print(
+        "[ -e | --exclude=<dir1> | --exclude=<dir1:dir2:etc> ]\n\n"
+        "By passing this flag the provided directories will be skipped during execution.\n"
+        "\n-------------------------------------------------------------------------------\n"
+    )
 
-    if filter(IsSourceFile, files):
-      # Has sources, make this a normal library.
-      self.converter.toplevel += "add_library(%s\n  %s)\n" % (
-          kwargs["name"],
-          "\n  ".join(files)
-      )
-      self._add_deps(kwargs)
-    else:
-      # Header-only library, have to do a couple things differently.
-      # For some info, see:
-      #  http://mariobadr.com/creating-a-header-only-library-with-cmake.html
-      self.converter.toplevel += "add_library(%s INTERFACE)\n" % (
-          kwargs["name"]
-      )
-      self._add_deps(kwargs, " INTERFACE")
+    print(
+        "[ -c | --disable-comments ]\n\n"
+        "By default, bazel2cmake generates comments in the newly created CMakeLists.txt\n"
+        "By passing this flag, these comments will NOT be generated.\n"
+        "\n-------------------------------------------------------------------------------\n"
+    )
 
-  def cc_binary(self, **kwargs):
-    pass
+    print(
+        "[ -r | --recursive ]\n\n"
+        "By default bazel2cmake enables recursive directory walking.\n"
+        "By passing this flag, recursion will be enabled.\n"
+        "\n-------------------------------------------------------------------------------\n"
+    )
 
-  def cc_test(self, **kwargs):
-    # Disable this until we properly support upb_proto_library().
-    # self.converter.toplevel += "add_executable(%s\n  %s)\n" % (
-    #     kwargs["name"],
-    #     "\n  ".join(kwargs["srcs"])
-    # )
-    # self.converter.toplevel += "add_test(NAME %s COMMAND %s)\n" % (
-    #     kwargs["name"],
-    #     kwargs["name"],
-    # )
+def find_build_files(root_dir, recursive=True, exclude_dirs=None):
+    if exclude_dirs is None:
+        exclude_dirs = []
+    
+    build_files = []
+    if not recursive:
 
-    # if "data" in kwargs:
-    #   for data_dep in kwargs["data"]:
-    #     self.converter.toplevel += textwrap.dedent("""\
-    #       add_custom_command(
-    #           TARGET %s POST_BUILD
-    #           COMMAND ${CMAKE_COMMAND} -E copy
-    #                   ${CMAKE_SOURCE_DIR}/%s
-    #                   ${CMAKE_CURRENT_BINARY_DIR}/%s)\n""" % (
-    #       kwargs["name"], data_dep, data_dep
-    #     ))
+        for build_file in ["BUILD", "BUILD.bazel"]:
+            path = os.path.join(root_dir, build_file)
 
-    # self._add_deps(kwargs)
-    pass
+            if os.path.exists(path):
+                build_files.append(path)
+        
+        return build_files
 
-  def py_library(self, **kwargs):
-    pass
+    for root, directory, files in os.walk(root_dir):
+        # Skipping hidden directories and .git
+        directory[:] = [directory for directory in directory if not directory.startswith('.') and directory != 'build']
+        
+        relative_root = os.path.relpath(root, root_dir)
 
-  def py_binary(self, **kwargs):
-    pass
+        if relative_root != ".":
 
-  def lua_cclibrary(self, **kwargs):
-    pass
+            # Checking if the current directory is to be excluded
+            if any(relative_root == ex or relative_root.startswith(directory + os.sep) for directory in exclude_dirs):
+                dirs[:] = [] 
+                continue
 
-  def lua_library(self, **kwargs):
-    pass
+        if "BUILD" in files:
+            build_files.append(os.path.join(root, "BUILD"))
 
-  def lua_binary(self, **kwargs):
-    pass
+        elif "BUILD.bazel" in files:
+            build_files.append(os.path.join(root, "BUILD.bazel"))
+    
+    return build_files
 
-  def lua_test(self, **kwargs):
-    pass
+def main():
+    try:
+        options, arguments = getopt.getopt(sys.argv[1:], "hd:e:cr", 
+            ["help", "directory=", "exclude=", "disable-comments", "--no-recursion"])
+    except getopt.GetoptError as err:
+        print(err)
+        print_help()
+        sys.exit(2)
 
-  def sh_test(self, **kwargs):
-    pass
+    workspace_root = os.getcwd()
+    exclude_dirs = []
+    recursive = True
+    disable_comments = False
 
-  def make_shell_script(self, **kwargs):
-    pass
+    for option, arguments in options:
+        if option in ("-h", "--help"):
+            print_help()
+            sys.exit()
+        
+        elif option in ("-d", "--directory"):
+            workspace_root = os.path.abspath(arguments)
+        
+        elif option in ("-e", "--exclude"):
+            exclude_dirs = arguments.split(':')
+        
+        elif option in ("-c", "--disable-comments"):
+            disable_comments = True
 
-  def exports_files(self, files, **kwargs):
-    pass
+        elif option in ("-r", "--no-recursion"):
+            recursive = False
 
-  def proto_library(self, **kwargs):
-    pass
+    build_files = find_build_files(workspace_root, recursive, exclude_dirs)
+    
+    parser = Parser(workspace_root)
+    resolver = Resolver()
+    
+    workspace_file = os.path.join(workspace_root, "WORKSPACE")
+    if not os.path.exists(workspace_file):
+        workspace_file = os.path.join(workspace_root, "WORKSPACE.bazel")
+    
+    project_name = parser.parse_workspace_file(workspace_file)
+    
+    # Parsing all the resolved targets across all build files recognized by lib.parser
+    for build_file in build_files:
+        package_path = os.path.relpath(os.path.dirname(build_file), workspace_root)
+        
+        # Pre-emptively handling root directory issues.
+        if package_path == ".":
+            package_path = ""
+        
+        targets = parser.parse_build_file(build_file, package_path)
+        
+        for target in targets:
+            resolver.register(target)
+    
+    # Performing further parsing and grouping operations to properly map the targets prior to generation.
+    targets_by_package = {}
+    for target in parser.targets:
+        package = target.label.package
+        
+        # Creating an empty entry since the current package has not been targetted.
+        if package not in targets_by_package:
+            targets_by_package[package] = []
 
-  def generated_file_staleness_test(self, **kwargs):
-    pass
+        targets_by_package[package].append(target)
+    
+    generator = Generator(resolver)
+    watermark = "# This file was generated from using bazel2cmake.\n\n# https://github.com/Static-Codes/bazel2cmake\n\n"
+    
+    comment = watermark if not disable_comments else ""
 
-  def upb_amalgamation(self, **kwargs):
-    pass
+    # Generating the individual non-root CMakeLists.txt files for each package.
+    packages = sorted(targets_by_package.keys())
+    for package in packages:
+        cmake_content = generator.generate(targets_by_package[package])
+        
+        # If a root package is present, it will be handled after execution of the current for loop concludes.
+        if package == "":
+            continue
+            
+        package_directory = os.path.join(workspace_root, package)
+        output_file = os.path.join(package_directory, "CMakeLists.txt")
+        
+        with open(output_file, "w") as f:
+            f.write(comment + cmake_content)
 
-  def upb_proto_library(self, **kwargs):
-    pass
+        print(f"[SUCCESS]: CMakeLists.txt file generated in package sub-directory: '{package_directory}'")
 
-  def upb_proto_reflection_library(self, **kwargs):
-    pass
+    # Generating the root CMakeLists.txt file, which also handles root packages.
+    root_targets = targets_by_package.get("", [])
+    root_cmake_content = generator.generate(root_targets)
+    
+    root_template = f"""{comment}\
+cmake_minimum_required(VERSION 3.10)
+project({project_name})
 
-  def genrule(self, **kwargs):
-    pass
+enable_testing()
 
-  def config_setting(self, **kwargs):
-    pass
+include_directories(${{{{CMAKE_SOURCE_DIR}}}})
 
-  def select(self, arg_dict):
-    return []
+{{root_content}}
 
-  def glob(self, *args):
-    return []
+{{subdirectories}}
+"""
+    subdirs_content = ""
+    for package in packages:
+        
+        if package == "":
+            continue
 
-  def licenses(self, *args):
-    pass
+        subdirs_content += f"add_subdirectory({package})\n"
+        
+    root_output = os.path.join(workspace_root, "CMakeLists.txt")
+    
+    with open(root_output, "w") as f:    
+        f.write(root_template.format(
+            root_content=root_cmake_content,
+            subdirectories=subdirs_content
+        ))
+    
+    print(f"[SUCCESS]: CMakeLists.txt file generated in project root directory: '{workspace_root}'")
 
-  def map_dep(self, arg):
-    return arg
-
-
-class WorkspaceFileFunctions(object):
-  def __init__(self, converter):
-    self.converter = converter
-
-  def load(self, *args):
-    pass
-
-  def workspace(self, **kwargs):
-    self.converter.prelude += "project(%s)\n" % (kwargs["name"])
-
-  def http_archive(self, **kwargs):
-    pass
-
-  def git_repository(self, **kwargs):
-    pass
-
-
-class Converter(object):
-  def __init__(self):
-    self.prelude = ""
-    self.toplevel = ""
-    self.if_lua = ""
-
-  def convert(self):
-    return self.template % {
-        "prelude": converter.prelude,
-        "toplevel": converter.toplevel,
-    }
-
-  template = textwrap.dedent("""\
-    # This file was generated from BUILD using tools/make_cmakelists.py.
-
-    cmake_minimum_required(VERSION 3.1)
-
-    if(${CMAKE_VERSION} VERSION_LESS 3.12)
-        cmake_policy(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
-    else()
-        cmake_policy(VERSION 3.12)
-    endif()
-
-    cmake_minimum_required (VERSION 3.0)
-    cmake_policy(SET CMP0048 NEW)
-
-    %(prelude)s
-
-    # Prevent CMake from setting -rdynamic on Linux (!!).
-    SET(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
-    SET(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
-
-    # Set default build type.
-    if(NOT CMAKE_BUILD_TYPE)
-      message(STATUS "Setting build type to 'RelWithDebInfo' as none was specified.")
-      set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
-          "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel."
-          FORCE)
-    endif()
-
-    # When using Ninja, compiler output won't be colorized without this.
-    include(CheckCXXCompilerFlag)
-    CHECK_CXX_COMPILER_FLAG(-fdiagnostics-color=always SUPPORTS_COLOR_ALWAYS)
-    if(SUPPORTS_COLOR_ALWAYS)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
-    endif()
-
-    # Implement ASAN/UBSAN options
-    if(UPB_ENABLE_ASAN)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
-    endif()
-
-    if(UPB_ENABLE_UBSAN)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
-    endif()
-
-    include_directories(.)
-    include_directories(${CMAKE_CURRENT_BINARY_DIR})
-
-    if(APPLE)
-      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -undefined dynamic_lookup -flat_namespace")
-    elseif(UNIX)
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--build-id")
-    endif()
-
-    enable_testing()
-
-    %(toplevel)s
-
-  """)
-
-data = {}
-converter = Converter()
-
-def GetDict(obj):
-  ret = {}
-  for k in dir(obj):
-    if not k.startswith("_"):
-      ret[k] = getattr(obj, k);
-  return ret
-
-globs = GetDict(converter)
-
-execfile("WORKSPACE", GetDict(WorkspaceFileFunctions(converter)))
-execfile("BUILD", GetDict(BuildFileFunctions(converter)))
-
-with open(sys.argv[1], "w") as f:
-  f.write(converter.convert())
+if __name__ == "__main__":
+    main()
