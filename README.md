@@ -1,5 +1,5 @@
 
-# Bazel to CMake
+# Bazel2CMake
 
 This project converts Bazel `BUILD` and `WORKSPACE` files to
 `CMakeLists.txt`.  The Bazel BUILD file serves as your source of
@@ -8,33 +8,29 @@ can do a CMake-based build.
 
 This is not an official Google product.
 
-## Project Status: Experimental
-
-This project is experimental, and is only being used by a few projects
-currently.  It is not part of the official Bazel ecosystem or roadmap.
-
-The tool is quite incomplete at the moment, but I am working on adding
-more features so that it is effective for more and more projects.  The
-goal is to support a wide range of Bazel rules and features, including
-advanced features like aspects, but how to make this work well is an
-area of open experimentation and research.
-
 ## Usage
 
 From the root directory of a Bazel project (where your `BUILD` and
 `WORKSPACE` files live) run the following command.
 
-    $ path/to/bazel2cmake.py CMakeLists.txt
+    $ path/to/bazel2cmake.py -d path/to/bazel/project
 
-You can check the generated `CMakeLists.txt` file into your repository
-if you wish.  If you take this approach you will probably want a test
-that ensures it stays up-to-date with your Bazel `BUILD` file.  You
-may even want to create a `cc_test()` in Bazel that runs the CMake
-build to continuously verify that it works.
 
-(TODO: create a Bazel rule that does all of the above conveniently
-without the user having to fuss).
+## Currently supported Bazel Rules
+| Bazel Rule / Attribute | CMake Command | Notes |
+| :--- | :--- | :--- |
+| `cc_library(srcs = [...])` | `add_library(...)` | Project library with source files |
+| `cc_library(srcs = [])` | `add_library(... INTERFACE)` | Header-only library (interface) |
+| `cc_binary` | `add_executable(...)` | Executable target |
+| `cc_test` | `add_executable(...)` + `add_test(...)` | Test executable registered with CC Test |
+| `deps` | `target_link_libraries(...)` | Dependency linking |
+| `workspace(name = "...")` | `project(...)` | Project definition |
+| `genrule` | `add_custom_command(...)` | Custom build steps |
+| `data` | `add_custom_command(... POST_BUILD)` | Copying runtime data dependencies |
+| `hdrs` | Part of `add_library` | Headers included in target sources |
 
+
+    
 ## Why convert Bazel to CMake?
 
 Bazel `BUILD` files are a nice way to write build systems.  `BUILD`
@@ -92,17 +88,3 @@ To translate idiomatically, we translate at a high level.  For
 example `cc_library()` translates directly to `add_library()` in
 CMake.  But we try to capture subtleties; for example a header-only
 library needs to have the "INTERFACE" attribute in CMake.
-
-
-## Currently supported Bazel Rules
-| Bazel Rule / Attribute | CMake Command | Notes |
-| :--- | :--- | :--- |
-| `cc_library(srcs = [...])` | `add_library(...)` | Project library with source files |
-| `cc_library(srcs = [])` | `add_library(... INTERFACE)` | Header-only library (interface) |
-| `cc_binary` | `add_executable(...)` | Executable target |
-| `cc_test` | `add_executable(...)` + `add_test(...)` | Test executable registered with CC Test |
-| `deps` | `target_link_libraries(...)` | Dependency linking |
-| `workspace(name = "...")` | `project(...)` | Project definition |
-| `genrule` | `add_custom_command(...)` | Custom build steps |
-| `data` | `add_custom_command(... POST_BUILD)` | Copying runtime data dependencies |
-| `hdrs` | Part of `add_library` | Headers included in target sources |
