@@ -17,7 +17,7 @@ class BazelLabel:
                 label_str = label_str[repo_end:]
             
             else:
-                # Handled cases such as "@repo", etc.
+                # Handles cases such as "@repo", etc.
                 self.repo = label_str[1:]
                 label_str = "//"
 
