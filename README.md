@@ -29,7 +29,7 @@ can do a CMake-based build.
 | `data` | `add_custom_command(... POST_BUILD)` | Copying runtime data dependencies |
 | `hdrs` | Part of `add_library` | Headers included in target sources |
 
-
+See [the TODO document](TODO.md) for more information on the missing features.
     
 ## Why convert Bazel to CMake?
 
