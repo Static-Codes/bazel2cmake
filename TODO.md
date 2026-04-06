@@ -1,8 +1,87 @@
 # TODO
 
-### The current implementation of `bazel2cmake` lacks support for multiple (built-in types)[https://bazel.build/rules/lib/builtins/bazel_module] as defined by the (Bazel Rule Guide)[https://bazel.build/rules/lib/overview]
+### The current implementation of `bazel2cmake` lacks support for multiple [built-in types](https://bazel.build/rules/lib/builtins/bazel_module) as defined by the [Bazel Rule Guide](https://bazel.build/rules/lib/overview)
 
 - In further implementations, the intent is to tackle the translation from the bazel built-in type(s) and cmake's equivalent(s). 
 
 
-- Add unit tests much like was done (here)[https://github.com/Static-Codes/autocmake/tree/master/tests]
+- Add unit tests much like was done [here](https://github.com/Static-Codes/autocmake/tree/master/tests)
+
+
+## Bazel Rules Improvements and Implementations
+
+###  Core Rules
+- **`proto_library`**: Currently, there is parsing logic for this, but it is ignored during generation. This will require integration with CMake's Protobuf implementation. 
+    - `find_package(Protobuf)`
+    - `protobuf_generate_cpp`
+
+- **`cc_proto_library`**: This is not implemented at all, it is a hard requirement for protobuf in C++ targets.
+
+- **`sh_binary`, `sh_library`, `sh_test`**: These are not implemented at all, currently, shell script rules are completely ignored.
+
+- **`alias`**: While not an explicit requirement, it's a very nice "creature comfort" so to speak for target generation.
+
+- **`test_suite`**: Again, much like `alias` it is not an explicitly requirement, but the management of multiple tests, is always nice.
+
+### `WORKSPACE` Rules
+#### Hard Requirements for Future Implementations
+
+- **`http_archive`**: This should ideally be mapped to CMake's [`FetchContent`](https://cmake.org/cmake/help/latest/module/FetchContent.html) or [`ExternalProject`](https://cmake.org/cmake/help/latest/module/ExternalProject.html).
+
+- **`git_repository`**: This should be mapped to `FetchContent`[`FetchContent`](https://cmake.org/cmake/help/latest/module/FetchContent.html).
+
+- **`local_repository`**: This shoule be mapped to [`add_subdirectory`](https://cmake.org/cmake/help/latest/command/add_subdirectory.html)
+
+- **`bind`**: Haven't researched this yet, will update this accordingly.
+
+### Missing Attributes for Existing Rules
+
+#### `cc_library` and `cc_binary`
+- **`data`**: These are runtime dependencies, this could be implemented using `add_custom_command(POST_BUILD)` which would copy the associated files to the output directory.
+
+- **`alwayslink`**: This will be a pain, it will require mapping to linker flags like `-Wl,--whole-archive`.
+
+- **`linkstatic`**: Determines whether Bazel should link dependencies statically or dynamically.
+
+- **`include_prefix` and `strip_include_prefix`**: These likely wont be included, as they deal with header reconstruction.
+
+- **`textual_hdrs`**: I only grazed the documentation for these. They are headers that require contextual compilation.
+
+- **`visibility`**: Currently, Bazel's visibility labels are ignored.
+
+
+#### `genrule`
+- **Multiple `outs`**: The `cmd` replacement logic is quite rudamentary and primarily handles the first output. In a future implementation, this should be more dynamic.
+
+- **`$(locations ...)`**: Only a single `$(location ...)` is supported, and that support is quite limited. This is another implementation that could benefit from a more dynamic approach.
+
+- **`execpath` / `rootpath`**: Both of these Bazel variables are not yet handled in the implementation.
+
+#### External Dependency Resolution
+- **Label Mapping**: There is no mapping functionality for external Bazel labels 
+    - Example:
+        `@com_google_googletest//:gtest` -> `GTest::gtest`
+
+- **Remote Repositories**: Targets from `http_archive` or `git_repository` are not resolved or downloaded.
+
+#### Modern CMake Practices
+- **[`target_include_directories`](https://cmake.org/cmake/help/latest/command/target_include_directories.html)**: The generation logic of the root `CMakeLists.txt` uses the global `include_directories(${CMAKE_SOURCE_DIR})`. `target_include_directories` is a modern alternative that is more robust.
+
+- **Exporting Headers**: Refactoring the handling of `PUBLIC`, `PRIVATE`, and `INTERFACE` headers to ensure the proper inclusion of all library targets.
+
+#### Platform Specific Logic
+- **`select()` Mapping**: Currently only a small list of static platform keys are supported (`linux`, `windows`, `macos`, etc). 
+    - Custom `config_setting` targets are mapped to generic CMake options but there is no further parsing done.
+
+#### Compiler & Linker Flags (Optional)
+- **Flag Translation**: With the current implementation, Bazel `copts` and `linkopts` are passed directly to CMake. 
+    - Flags such as `-std=c++17` could be translated to their native CMake equivalents, in this case `target_compile_features`.
+    - This might be skipped, due to the potential for cross-compatibility issues between versions of Bazel and CMake.
+
+#### Miscellaneous
+- **`glob()` Improvements**: Adding support for `allow_empty` alongside more complex patterns.
+
+- **Project Watermarking**: Adding an option to disable the "Generated by bazel2cmake" header.
+
+- **Build Configurations**: Add various support for mapping Bazel's `opt`, `dbg`, and `fastbuild` to the equivalent [CMake build type(s)](https://cmake.org/cmake/help/latest/genindex.html).
+    - Much like the flag translation, this will be an uphill battle, as each command will have to be pinned to a minimum and potentially a maximum CMake version.
